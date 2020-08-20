@@ -20,6 +20,7 @@ import type {
   PoolDelegatedToDbResult,
   StakeAddressIdDbResult,
   EpochDelegationsDbResult,
+  DelegationHistoryDbResult,
 } from 'icarus-backend'; // eslint-disable-line
 
 // helper function to avoid destructuring ".rows" in the codebase
@@ -364,7 +365,7 @@ const rewardsForAccountDbId = (db: Pool) => async (accountDbId: number): Promise
 }
 
 /**
- * Gets delegations for the last 4 (TODO: change to 3 later) epochs
+ * Gets active delegations for the last 4 (TODO: change to 3 later) epochs
  * @param {Db Object} db
  * @param {number} accountDbId
  * @param {number} epoch
@@ -391,6 +392,25 @@ const currentEpoch = (db: Pool) => async (): Promise<number> => {
   return query.rows.length > 0 ? parseInt(query.rows[0].no, 10) : 0
 }
 
+/**
+ * Gets complete delegation history for an account
+ * @param {Db Object} db
+ * @param {number} accountDbId
+ */
+const delegationHistory = (db: Pool) => async (accountDbId: number)
+: Promise<TypedResultSet<DelegationHistoryDbResult>> =>
+  (db.query({
+    text: `SELECT block.epoch_no as "epochNo", block.time, RIGHT(ph.hash::text, -2) as "poolHash"
+      FROM delegation d
+      LEFT JOIN tx ON tx.id=d.tx_id
+      LEFT JOIN block ON tx.block=block.id
+      LEFT JOIN pool_update pu ON d.update_id=pu.id
+      LEFT JOIN pool_hash ph ON pu.hash_id=ph.id
+      WHERE d.addr_id=$1
+      ORDER BY block.slot_no DESC`,
+    values: [accountDbId],
+  }): any)
+
 export default (db: Pool): DbApi => ({
   filterUsedAddresses: extractRows(filterUsedAddresses(db)),
   utxoForAddresses: extractRows(utxoForAddresses(db)),
@@ -415,4 +435,5 @@ export default (db: Pool): DbApi => ({
   rewardsForAccountDbId: rewardsForAccountDbId(db),
   epochDelegations: extractRows(epochDelegations(db)),
   currentEpoch: currentEpoch(db),
+  delegationHistory: extractRows(delegationHistory(db)),
 })
